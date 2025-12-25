@@ -1,69 +1,81 @@
 pipeline {
     agent any
+
     environment {
-        AWS_ACCOUNT_ID= credentials('account_id')
-        AWS_DEFAULT_REGION="us-east-1" 
+        AWS_ACCOUNT_ID = credentials('account_id')
+        AWS_DEFAULT_REGION = "us-east-1"
         AWS_ACCESS_KEY_ID = credentials('aws_access_key_id')
         AWS_SECRET_ACCESS_KEY = credentials('aws_secret_access_key')
-    }    
+    }
+
     stages {
+
         stage('Run Terrascan') {
             steps {
-                    // Run Terrascan and save the JSON output
                 script {
-                    def scanStatus = sh(
-                        script: '''
-                        docker run --rm -v /var/lib/jenkins/workspace/eks_deployment:/iac tenable/terrascan:latest scan -d /iac/EKS_Terraform -o json > terrascan_output.json
-                        ''',
-                        returnStatus: true
-                    )
-      
-                    // Archive Terrascan results
-                    archiveArtifacts artifacts: 'terrascan_output.json', allowEmptyArchive: true
-                    
-                    // Parse JSON output
-                    def jsonContent = readFile('terrascan_output.json')
-                    def parsedJSON = new groovy.json.JsonSlurper().parseText(jsonContent)
-                    
-                    // Count medium and high severity violations
-                    def mediumViolations = parsedJSON.results.violations.findAll { it.severity == 'MEDIUM' }.size()
-                    def highViolations = parsedJSON.results.violations.findAll { it.severity == 'HIGH' }.size()
+                    sh '''
+                        docker run --rm \
+                        -v $WORKSPACE:/iac \
+                        tenable/terrascan:latest scan \
+                        -d /iac/EKS_Terraform \
+                        -o json > terrascan_output.json || true
+                    '''
 
-                    // Fail pipeline if medium or high severity vulnerabilities exist
+                    archiveArtifacts artifacts: 'terrascan_output.json', allowEmptyArchive: true
+
+                    if (!fileExists('terrascan_output.json')) {
+                        error "Terrascan output file was not created"
+                    }
+
+                    def jsonContent = readFile('terrascan_output.json').trim()
+                    if (!jsonContent) {
+                        error "Terrascan output is empty"
+                    }
+
+                    def parsedJSON = new groovy.json.JsonSlurper().parseText(jsonContent)
+
+                    def violations = parsedJSON?.results?.violations ?: []
+
+                    def mediumViolations = violations.findAll { it.severity == 'MEDIUM' }.size()
+                    def highViolations = violations.findAll { it.severity == 'HIGH' }.size()
+
                     if (mediumViolations > 0 || highViolations > 0) {
-                        error("Terrascan found ${mediumViolations} medium and ${highViolations} high severity vulnerabilities. Check terrascan_output.json for details.")
+                        error "Terrascan found ${mediumViolations} medium and ${highViolations} high severity vulnerabilities"
                     } else {
-                        echo "No critical vulnerabilities found. Proceeding with Terraform commands."
+                        echo "Terrascan passed. No medium or high severity issues found."
                     }
                 }
             }
         }
+
         stage('Terraform Init') {
             steps {
                 sh '''
-                cd /var/lib/jenkins/workspace/eks_deployment/EKS_Terraform
-                terraform init
+                    cd $WORKSPACE/EKS_Terraform
+                    terraform init
                 '''
             }
         }
+
         stage('Terraform Validate') {
             steps {
                 sh '''
-                cd /var/lib/jenkins/workspace/eks_deployment/EKS_Terraform
-                terraform validate
+                    cd $WORKSPACE/EKS_Terraform
+                    terraform validate
                 '''
             }
         }
+
         stage('Terraform Apply') {
             steps {
-                // Automatically approve the apply step
                 sh '''
-                cd /var/lib/jenkins/workspace/eks_deployment/EKS_Terraform
-                terraform ${action} -auto-approve
+                    cd $WORKSPACE/EKS_Terraform
+                    terraform apply -auto-approve
                 '''
             }
         }
     }
+
     post {
         always {
             echo 'Pipeline execution completed.'
