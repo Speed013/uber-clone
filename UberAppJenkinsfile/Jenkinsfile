@@ -72,17 +72,20 @@ pipeline {
         }
 
         stage('Docker Build & Push') {
-            steps {
-                withDockerRegistry(credentialsId: 'dockerpass') {
-                    sh '''
-                      docker system prune -af --volumes
-                      docker build -t uber .
-                      docker tag uber speed013/uber:latest
-                      docker push speed013/uber:latest
-                    '''
-                }
-            }
+    steps {
+        withDockerRegistry(
+            url: 'https://index.docker.io/v1/',
+            credentialsId: 'dockerpass'
+        ) {
+            sh '''
+              docker system prune -af --volumes
+              docker build -t uber .
+              docker tag uber speed013/uber:latest
+              docker push speed013/uber:latest
+            '''
         }
+    }
+}
 
         stage('TRIVY IMAGE SCAN') {
             steps {
