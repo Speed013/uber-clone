@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
+        AWS_DEFAULT_REGION = 'us-east-1'
     }
 
     tools {
@@ -72,7 +73,7 @@ pipeline {
 
         stage('Docker Build & Push') {
             steps {
-                withDockerRegistry(credentialsId: 'dockerpass', toolName: 'docker') {
+                withDockerRegistry(credentialsId: 'dockerpass') {
                     sh '''
                       docker system prune -af --volumes
                       docker build -t uber .
@@ -92,7 +93,7 @@ pipeline {
                 '''
             }
         }
-  
+
         stage('Deploy to kubernetes'){
             steps{
                 script{
