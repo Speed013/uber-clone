@@ -15,7 +15,7 @@ pipeline{
         }
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', url: 'https://github.com/tkibnyusuf/uber-clone.git'
+                git branch: 'main', url: 'https://github.com/Speed013/uber-clone.git'
             }
         }
         stage("Sonarqube Analysis "){
@@ -67,22 +67,22 @@ pipeline{
                    withDockerRegistry(credentialsId: 'dockerpass', toolName: 'docker'){
                        sh "docker system prune -a -f --volumes"
                        sh "docker build -t uber ."
-                       sh "docker tag uber tkibnyusuf/uber:latest "
-                       sh "docker push tkibnyusuf/uber:latest "
+                       sh "docker tag uber speed013/uber:latest "
+                       sh "docker push speed013/uber:latest "
                     }
                 }
             }
         }
         stage("TRIVY"){
             steps{
-                sh "trivy image tkibnyusuf/uber:latest > trivyimage.json"
+                sh "trivy image speed013/uber:latest > trivyimage.json"
             }
         }        
         stage('Deploy to kubernetes'){
             steps{
                 script{
                     dir('K8S') {
-                       withKubeConfig(caCertificate: '', clusterName: 'EKS_CLOUD', contextName: '', credentialsId: 'k8s', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://CDAB92984BB66E00AF5E204372F814B9.gr7.us-east-1.eks.amazonaws.com') {
+                       withKubeConfig(caCertificate: '', clusterName: 'EKS_CLOUD', contextName: '', credentialsId: 'k8s', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://D224D4713B49F9376A24B652AC5E8C28.gr7.us-east-1.eks.amazonaws.com') {
                                 sh 'kubectl apply -f deployment.yml'
                                 sh 'kubectl apply -f service.yml'
                         }
