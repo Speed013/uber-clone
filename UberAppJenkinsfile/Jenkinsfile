@@ -93,14 +93,18 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                sh '''
-                  aws eks update-kubeconfig --region us-east-1 --name EKS_CLOUD
-                  kubectl apply -f K8S/deployment.yml
-                  kubectl apply -f K8S/service.yml
-                '''
+        stage('Deploy to kubernetes'){
+            steps{
+                script{
+                    dir('K8S') {
+                       withKubeConfig(caCertificate: '', clusterName: 'EKS_CLOUD', contextName: '', credentialsId: 'k8s', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://1C527ACCEB9B27D9E4335DC284DD7BEF.gr7.us-east-1.eks.amazonaws.com') {
+                                sh 'kubectl apply -f deployment.yml'
+                                sh 'kubectl apply -f service.yml'
+                        }
+                    }
+                }
             }
-        }
+        }        
     }
+    
 }
