@@ -1,83 +1,98 @@
-pipeline{
+pipeline {
     agent any
+
     environment {
-        NVD_API_KEY= credentials('NVD_API_KEY')
-        SCANNER_HOME=tool 'sonar-scanner'
-    }      
-    tools{
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    tools {
         nodejs 'node16'
     }
+
     stages {
-        stage('clean workspace'){
-            steps{
+
+        stage('Clean Workspace') {
+            steps {
                 cleanWs()
             }
         }
-        stage('Checkout from Git'){
-            steps{
+
+        stage('Checkout from Git') {
+            steps {
                 git branch: 'main', url: 'https://github.com/Speed013/uber-clone.git'
             }
         }
-        stage("Sonarqube Analysis "){
-            steps{
+
+        stage('SonarQube Analysis') {
+            steps {
                 withSonarQubeEnv('sonar-scanner') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName="Application_deployment" \
-                    -Dsonar.projectKey="Application_deployment"'''
+                    sh '''
+                      $SCANNER_HOME/bin/sonar-scanner \
+                      -Dsonar.projectName=Application_deployment \
+                      -Dsonar.projectKey=Application_deployment
+                    '''
                 }
             }
         }
-        stage("quality gate"){
-           steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonartoken'
-                }
+
+        stage('Quality Gate') {
+            steps {
+                waitForQualityGate abortPipeline: false, credentialsId: 'sonartoken'
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
-                sh "npm install"
+                sh 'npm install'
             }
         }
+
         stage('OWASP FS SCAN') {
             steps {
                 dependencyCheck(
                     additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit',
                     odcInstallation: 'DP-Check'
                 )
-        
+
                 dependencyCheckPublisher(
-                    pattern: '**/dependency-check-report.xml',
-                    nvdCredentialsId: 'NVD_API_KEY'   // <-- correct parameter
+                    pattern: '**/dependency-check-report.xml'
                 )
             }
         }
 
-
-
-
-         stage('TRIVY FS SCAN') {
+        stage('TRIVY FS SCAN') {
             steps {
-                sh "trivy fs . > trivyfs.json"
+                sh '''
+                  docker run --rm \
+                  -v $WORKSPACE:/workspace \
+                  aquasec/trivy:latest fs /workspace > trivyfs.json
+                '''
             }
         }
-        stage("Docker Build & Push"){
-            steps{
-                script{
-                   withDockerRegistry(credentialsId: 'dockerpass', toolName: 'docker'){
-                       sh "docker system prune -a -f --volumes"
-                       sh "docker build -t uber ."
-                       sh "docker tag uber speed013/uber:latest "
-                       sh "docker push speed013/uber:latest "
-                    }
+
+        stage('Docker Build & Push') {
+            steps {
+                withDockerRegistry(credentialsId: 'dockerpass', toolName: 'docker') {
+                    sh '''
+                      docker system prune -af --volumes
+                      docker build -t uber .
+                      docker tag uber speed013/uber:latest
+                      docker push speed013/uber:latest
+                    '''
                 }
             }
         }
-        stage("TRIVY"){
-            steps{
-                sh "trivy image speed013/uber:latest > trivyimage.json"
+
+        stage('TRIVY IMAGE SCAN') {
+            steps {
+                sh '''
+                  docker run --rm \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  aquasec/trivy:latest image speed013/uber:latest > trivyimage.json
+                '''
             }
-        }        
+        }
+  
         stage('Deploy to kubernetes'){
             steps{
                 script{
